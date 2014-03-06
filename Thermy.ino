@@ -1,6 +1,7 @@
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <Thermometer.h>
 #include <TempController.h>
-
-// We always have to include the library
 #include <LedControl.h>
 
 //
@@ -22,26 +23,13 @@
 // Tutorial:
 // http://www.hacktronics.com/Tutorials/arduino-1-wire-tutorial.html
 
-#include <OneWire.h>
-#include <DallasTemperature.h>
 
-// Temperature bus is Arduino digital pin 6
-#define ONE_WIRE_BUS 6
+DeviceAddress da_thermometer_a = { 0x28, 0xFC, 0x74, 0xC9, 0x02, 0x00, 0x00, 0x86 };
+DeviceAddress da_thermometer_b = { 0x28, 0x6B, 0xDF, 0xDF, 0x02, 0x00, 0x00, 0xC0 };
 
-// Setup a oneWire instance to communicate with any OneWire devices
-OneWire oneWire(ONE_WIRE_BUS);
-
-// Pass our oneWire reference to Dallas Temperature. 
-DallasTemperature sensors(&oneWire);
-
-// Assign the addresses of your 1-Wire temp sensors.
-// See the tutorial on how to obtain these addresses:
-// http://www.hacktronics.com/Tutorials/arduino-1-wire-address-finder.html
-
-DeviceAddress XinsideThermometer = { 0x28, 0x86, 0x86, 0xC9, 0x02, 0x00, 0x00, 0xF4 };
-DeviceAddress thermometer_a = { 0x28, 0xFC, 0x74, 0xC9, 0x02, 0x00, 0x00, 0x86 };
-DeviceAddress thermometer_b = { 0x28, 0x6B, 0xDF, 0xDF, 0x02, 0x00, 0x00, 0xC0 };
-DeviceAddress dogHouseThermometer = { 0x28, 0x59, 0xBE, 0xDF, 0x02, 0x00, 0x00, 0x9F };
+// TODO: Keep these in ROM, create channel assignment protocol
+Thermometer thermometer_a(da_thermometer_a);
+Thermometer thermometer_b(da_thermometer_b);
 
 // Number of 
 #define HOLDPERIOD0 333
@@ -52,6 +40,7 @@ int holdcount = 0;
 int holdperiod = HOLDPERIOD0;
 byte state, prevstate;
 float temp_a, temp_b;
+float tolerance_a, tolerance_b;
 float ref_temp_a, ref_temp_b;
 static DisplayBoard displayBoard;
 
@@ -87,7 +76,6 @@ void printButtons() {
     }
 }
 
-
 void initializeSerial() {
     // Serial
     Serial.begin(9600);
@@ -96,10 +84,10 @@ void initializeSerial() {
 }
 
 void updateDisplay(float a, float b,
-   boolean hot_a = false,
-   boolean hot_b = false,
    boolean cold_a = false,
-   boolean cold_b = false)
+   boolean hot_a = false,
+   boolean cold_b = false,
+   boolean hot_b = false)
 {
   displayBoard.temp(CHANNEL_A, a);
   displayBoard.temp(CHANNEL_B, b);
@@ -121,10 +109,68 @@ void initializeDisplayBoard() {
     holdcount = 1000 / DELAYTIME; // After 2 seconds, start counting fast
     holdperiod = HOLDPERIOD0;
     temp_a = temp_b = 0.0;
-    ref_temp_a = ref_temp_b = 0.0;
+    tolerance_a = tolerance_b = 0.5;
+    ref_temp_a = ref_temp_b = 48.0;
     updateDisplay(temp_a, temp_b, false, false, false, false);    
 }
 
+void readTemperatures() {
+  float a_temp = thermometer_a.getTemperature();
+  if (a_temp > -100.0) {
+     temp_a = thermometer_a.getTemperature();
+  } else {
+     Serial.println("A: get temp failed");
+  }
+//  sensors.requestTemperatures();
+//  readTemperature(thermometer_a, 'A', temp_a);
+}
+
+void setup() {
+  initializeSerial();
+  initializeDisplayBoard();
+//  initializeSensors();
+}
+
+void loop() {
+  float a = thermometer_a.getTemperature();
+  float b = thermometer_b.getTemperature();
+
+  if (a > -100.0) {
+    temp_a = a;
+  } else {
+    Serial.println("A failed");
+  }
+  if (b > -100.0) {
+    temp_b = b;
+  } else {
+    Serial.println("b failed");
+  }
+  
+  float diff_a = temp_a - ref_temp_a;
+  float diff_b = temp_b - ref_temp_b;
+
+  Serial.println("");
+  Serial.print("a:");
+  Serial.print(temp_a);
+  Serial.print(":");
+  Serial.print(diff_a);
+  Serial.print(":b:");
+  Serial.print(temp_b);
+  Serial.print(":");
+  Serial.println(diff_b);
+  
+  updateDisplay(temp_a, temp_b,
+    diff_a < (-1 * tolerance_a),
+    diff_a > tolerance_a,
+    diff_b < (-1 * tolerance_b),
+    diff_b > tolerance_b);
+  
+ // printButtons();
+  delay(1000);
+}
+
+#if 0
+/*
 void initializeSensors() {
     // Start up the library
   sensors.begin();
@@ -133,12 +179,10 @@ void initializeSensors() {
 //  sensors.setResolution(outsideThermometer, 10);
 //  sensors.setResolution(dogHouseThermometer, 10);
 }
+*/
 
-void setup() {
-  initializeSerial();
-  initializeDisplayBoard();
-  initializeSensors();
-}
+
+
 
 void readTemperature(DeviceAddress device, char channel, float& temp_x) {
   float tempC = sensors.getTempC(device);
@@ -153,11 +197,6 @@ void readTemperature(DeviceAddress device, char channel, float& temp_x) {
     Serial.println(tempF);
     temp_x = tempF;
   }
-}
-
-void readTemperatures() {
-  sensors.requestTemperatures();
-  readTemperature(thermometer_a, 'A', temp_a);
 }
 
 void countUp(float& temp_x) {
@@ -239,4 +278,5 @@ void loop() {
   delay(DELAYTIME);
 }
 
+#endif
 
