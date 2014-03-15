@@ -3,6 +3,7 @@
 #include <Thermometer.h>
 #include <TempController.h>
 #include <LedControl.h>
+#include <EEPROM.h>
 
 //
 // TODO: Protocol to register a specific probe to channel A or B:
